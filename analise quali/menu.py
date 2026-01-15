@@ -35,6 +35,8 @@ def mostrar_menu():
     
     print("1. Teste Rápido")
     print("2. Análise Completa" + (" (configure API key primeiro!)" if not tem_api else ""))
+    print("3. Gerar Gráficos")
+    print("4. Gerar Relatórios")
     print("0. Sair")
     print()
     
@@ -72,6 +74,12 @@ def main():
                 input("\nEnter para continuar...")
             else:
                 executar_script("analyzer.py")
+        
+        elif opcao == "3":
+            executar_script("visualizar.py")
+        
+        elif opcao == "4":
+            executar_script("relatorios.py")
         
         else:
             print("\nOpção inválida!")
