@@ -283,7 +283,7 @@ class SimilarityAnalyzer:
 
 def mostrar_menu_planilhas() -> Tuple[str, str, str]:
     """Mostra menu de seleção de planilhas"""
-    base_path = Path(__file__).parent.parent.parent
+    base_path = Path(__file__).parent.parent
     
     planilhas = [
         ("INTIMA", "Chat GPT - INTIMA.xlsx", "ChatGPT"),

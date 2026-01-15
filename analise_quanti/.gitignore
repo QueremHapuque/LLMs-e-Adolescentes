@@ -4,21 +4,13 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 venv/
 ENV/
-
-# Resultados de análise
-resultados/
-
-# Modelos baixados
-.cache/
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
 
 # OS
 .DS_Store

@@ -54,6 +54,9 @@ class VisualizadorQuantitativo:
         for arquivo in arquivos:
             try:
                 df = pd.read_excel(arquivo)
+                # Converter coluna 'similaridades' de string para lista
+                if 'similaridades' in df.columns:
+                    df['similaridades'] = df['similaridades'].apply(lambda x: eval(x) if isinstance(x, str) else x)
                 dfs.append(df)
                 print(f"  ✓ {arquivo.name}")
             except Exception as e:

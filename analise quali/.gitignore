@@ -1,0 +1,29 @@
+# Arquivos de ambiente
+.env
+
+# Ambiente virtual
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dados temporários
+*.tmp
+*.log
