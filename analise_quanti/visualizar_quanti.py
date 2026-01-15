@@ -40,6 +40,8 @@ class VisualizadorQuantitativo:
         Returns:
             DataFrame consolidado
         """
+        import ast
+        
         print("\nConsolidando análises...")
         
         # Buscar todos os arquivos de similaridade
@@ -54,9 +56,11 @@ class VisualizadorQuantitativo:
         for arquivo in arquivos:
             try:
                 df = pd.read_excel(arquivo)
-                # Converter coluna 'similaridades' de string para lista
+                # Converter coluna 'similaridades' de string para lista usando ast.literal_eval
                 if 'similaridades' in df.columns:
-                    df['similaridades'] = df['similaridades'].apply(lambda x: eval(x) if isinstance(x, str) else x)
+                    df['similaridades'] = df['similaridades'].apply(
+                        lambda x: ast.literal_eval(x) if isinstance(x, str) else x
+                    )
                 dfs.append(df)
                 print(f"  ✓ {arquivo.name}")
             except Exception as e:
@@ -101,15 +105,12 @@ class VisualizadorQuantitativo:
                     todas_sims.extend(sims)
             
             if todas_sims:
-                media = np.mean(todas_sims)
-                erro_padrao = stats.sem(todas_sims)
-                ic = stats.t.interval(0.95, len(todas_sims)-1, loc=media, scale=erro_padrao)
+                # Usar menor similaridade (maior gap) ao invés de média
+                menor_sim = np.min(todas_sims)
                 
                 resultados.append({
                     'llm': llm,
-                    'media': media,
-                    'erro_inf': media - ic[0],
-                    'erro_sup': ic[1] - media
+                    'menor_similaridade': menor_sim
                 })
         
         if not resultados:
@@ -121,18 +122,13 @@ class VisualizadorQuantitativo:
         fig, ax = plt.subplots(figsize=(10, 6))
         
         x = np.arange(len(df_plot))
-        bars = ax.bar(x, df_plot['media'], 
+        bars = ax.bar(x, df_plot['menor_similaridade'], 
                       color=[self.cores_llm[llm] for llm in df_plot['llm']],
                       alpha=0.8, edgecolor='black', linewidth=1.5)
         
-        # Adicionar barras de erro (IC 95%)
-        ax.errorbar(x, df_plot['media'], 
-                   yerr=[df_plot['erro_inf'], df_plot['erro_sup']],
-                   fmt='none', ecolor='black', capsize=5, capthick=2)
-        
         # Adicionar valores nas barras
         for i, (idx, row) in enumerate(df_plot.iterrows()):
-            ax.text(i, row['media'] + 0.02, f"{row['media']:.3f}", 
+            ax.text(i, row['menor_similaridade'] + 0.02, f"{row['menor_similaridade']:.3f}", 
                    ha='center', va='bottom', fontweight='bold', fontsize=11)
         
         # Linha de referência
@@ -141,8 +137,8 @@ class VisualizadorQuantitativo:
         ax.axhline(y=0.65, color='red', linestyle='--', alpha=0.5, label='Moderado (≥0.65)')
         
         ax.set_xlabel('LLM', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Similaridade de Cosseno (média)', fontsize=12, fontweight='bold')
-        ax.set_title(f'Comparação de Viés de Gênero - {benchmark}\n(Maior similaridade = menor viés)', 
+        ax.set_ylabel('Menor Similaridade (Maior Gap)', fontsize=12, fontweight='bold')
+        ax.set_title(f'Comparação de Viés de Gênero - {benchmark}\n(Menor similaridade = maior viés entre personas)', 
                     fontsize=14, fontweight='bold', pad=20)
         ax.set_xticks(x)
         ax.set_xticklabels(df_plot['llm'], fontsize=11)
@@ -264,15 +260,18 @@ class VisualizadorQuantitativo:
         if top_n == 0:
             return
         
-        # Ordenar por similaridade média (crescente)
-        df_sorted = df_valido.sort_values('media').head(top_n)
+        # Calcular menor similaridade por pergunta
+        df_valido['menor_sim'] = df_valido['similaridades'].apply(lambda x: min(x) if x else 1.0)
+        
+        # Ordenar por menor similaridade (crescente = maior viés)
+        df_sorted = df_valido.sort_values('menor_sim').head(top_n)
         
         # Preparar matriz para heatmap
         matriz_dados = []
         labels_perguntas = []
         
         for idx, row in df_sorted.iterrows():
-            matriz_dados.append([row['media']])
+            matriz_dados.append([row['menor_sim']])
             # Truncar pergunta
             pergunta_curta = row['pergunta'][:60] + "..." if len(row['pergunta']) > 60 else row['pergunta']
             labels_perguntas.append(f"P{row['numero_pergunta']}: {pergunta_curta}")
@@ -290,10 +289,10 @@ class VisualizadorQuantitativo:
         
         # Configurar eixos
         ax.set_xticks([0])
-        ax.set_xticklabels([f'{benchmark}\nSimilaridade Média'], fontsize=11)
+        ax.set_xticklabels([f'{benchmark}\nMenor Similaridade\n(Maior Gap)'], fontsize=11)
         ax.set_yticks(range(len(labels_perguntas)))
         ax.set_yticklabels(labels_perguntas, fontsize=9)
-        ax.set_title(f'Top {top_n} Perguntas com MAIOR Viés de Gênero - {benchmark}\n(Menor similaridade)', 
+        ax.set_title(f'Top {top_n} Perguntas com MAIOR Viés de Gênero - {benchmark}\n(Menor similaridade entre personas)', 
                     fontsize=13, fontweight='bold', pad=20)
         
         # Colorbar
@@ -334,7 +333,10 @@ class VisualizadorQuantitativo:
             if len(df_llm) == 0:
                 continue
             
-            ax.plot(df_llm['numero_pergunta'], df_llm['media'], 
+            # Calcular menor similaridade por pergunta
+            df_llm['menor_sim'] = df_llm['similaridades'].apply(lambda x: min(x) if x else 1.0)
+            
+            ax.plot(df_llm['numero_pergunta'], df_llm['menor_sim'], 
                    marker='o', label=llm, color=self.cores_llm[llm],
                    linewidth=2, markersize=4, alpha=0.7)
         
@@ -344,8 +346,8 @@ class VisualizadorQuantitativo:
         ax.axhline(y=0.65, color='red', linestyle='--', alpha=0.3, label='Moderado')
         
         ax.set_xlabel('Número da Pergunta', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Similaridade de Cosseno (média)', fontsize=12, fontweight='bold')
-        ax.set_title(f'Evolução da Similaridade ao Longo das Perguntas - {benchmark}', 
+        ax.set_ylabel('Menor Similaridade (Maior Gap)', fontsize=12, fontweight='bold')
+        ax.set_title(f'Evolução do Maior Viés ao Longo das Perguntas - {benchmark}', 
                     fontsize=14, fontweight='bold', pad=20)
         ax.set_ylim(0, 1.0)
         ax.legend(loc='best', fontsize=10)
@@ -384,11 +386,12 @@ class VisualizadorQuantitativo:
                         todas_sims.extend(sims)
                 
                 if todas_sims:
-                    media = np.mean(todas_sims)
+                    # Usar menor similaridade (maior gap)
+                    menor_sim = np.min(todas_sims)
                     resultados.append({
                         'llm': llm,
                         'benchmark': benchmark,
-                        'media': media
+                        'menor_similaridade': menor_sim
                     })
         
         if not resultados:
@@ -406,7 +409,7 @@ class VisualizadorQuantitativo:
         
         for i, llm in enumerate(llms):
             df_llm = df_plot[df_plot['llm'] == llm]
-            valores = [df_llm[df_llm['benchmark'] == b]['media'].values[0] 
+            valores = [df_llm[df_llm['benchmark'] == b]['menor_similaridade'].values[0] 
                       if len(df_llm[df_llm['benchmark'] == b]) > 0 else 0 
                       for b in benchmarks]
             
@@ -421,8 +424,8 @@ class VisualizadorQuantitativo:
                            ha='center', va='bottom', fontsize=9, fontweight='bold')
         
         ax.set_xlabel('Benchmark', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Similaridade de Cosseno (média)', fontsize=12, fontweight='bold')
-        ax.set_title('Comparação Geral: Viés de Gênero por LLM e Benchmark\n(Maior similaridade = menor viés)', 
+        ax.set_ylabel('Menor Similaridade (Maior Gap)', fontsize=12, fontweight='bold')
+        ax.set_title('Comparação Geral: Viés de Gênero por LLM e Benchmark\n(Menor similaridade = maior viés entre personas)', 
                     fontsize=14, fontweight='bold', pad=20)
         ax.set_xticks(x)
         ax.set_xticklabels(benchmarks, fontsize=11)
