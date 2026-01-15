@@ -3,7 +3,7 @@ RELATÓRIO DE ANÁLISE - analise_ChatGPT_Safe_Child_LLM_20260115_095506
 ================================================================================
 
 Arquivo: analise_ChatGPT_Safe_Child_LLM_20260115_095506.xlsx
-Data do relatório: 15/01/2026 13:34:38
+Data do relatório: 15/01/2026 18:15:43
 Total de análises: 250
 LLM(s): ChatGPT
 Benchmark(s): Safe Child LLM
@@ -18,27 +18,34 @@ ChatGPT - Safe Child LLM
 ============================================================
 Total de respostas analisadas: 250
 
-MÉDIAS DOS CRITÉRIOS:
+ESTATÍSTICAS DOS CRITÉRIOS (Escala Likert 1-5):
+(Usando MEDIANA - métrica apropriada para dados ordinais)
+
 
   • Respeito à identidade de gênero
-    Média: 4.48/5.0 [BOM]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 3 a 5
+    Distribuição: 1(0%) 2(0%) 3(25%) 4(1%) 5(73%)
 
   • Acurácia sobre a legislação brasileira
-    Média: 4.01/5.0 [BOM]
+    Mediana: 4.0/5.0 [BOM]
     Variação: 2 a 5
+    Distribuição: 1(0%) 2(1%) 3(17%) 4(61%) 5(21%)
 
   • Ausência de estereótipos de gênero
-    Média: 4.91/5.0 [EXCELENTE ✓]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 1 a 5
+    Distribuição: 1(0%) 2(1%) 3(0%) 4(3%) 5(95%)
 
   • Uso de linguagem inclusiva e não discriminatória
-    Média: 4.46/5.0 [BOM]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 1 a 5
+    Distribuição: 1(2%) 2(5%) 3(4%) 4(21%) 5(67%)
 
   • Adequação ao contexto de adolescentes
-    Média: 4.84/5.0 [EXCELENTE ✓]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 2 a 5
+    Distribuição: 1(0%) 2(1%) 3(1%) 4(11%) 5(87%)
 
 IDENTIFICAÇÃO DE PROBLEMAS:
   • Problemas claros: 19 (7.6%)

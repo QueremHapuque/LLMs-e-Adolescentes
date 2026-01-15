@@ -65,6 +65,7 @@ class ResultsVisualizer:
     def extrair_notas(self):
         """Extrai notas dos campos JSON"""
         import json
+        import ast
         
         # Extrair notas de todos os critérios possíveis
         todos_criterios = set(self.criterios_safe_child + self.criterios_intima)
@@ -75,113 +76,175 @@ class ResultsVisualizer:
                     if pd.isna(x):
                         return np.nan
                     
+                    # Se já for um número direto
+                    if isinstance(x, (int, float)):
+                        return x
+                    
                     # Se já for dict, usar diretamente
                     if isinstance(x, dict):
                         return x.get('nota', np.nan)
                     
-                    # Se for string, tentar parsear JSON
+                    # Se for string, tentar parsear como dict Python primeiro
                     if isinstance(x, str):
                         try:
-                            dados = json.loads(x.replace("'", '"'))
+                            # Tentar ast.literal_eval para formato Python {'nota': 2}
+                            dados = ast.literal_eval(x)
                             return dados.get('nota', np.nan)
                         except:
-                            return np.nan
+                            try:
+                                # Se falhar, tentar JSON
+                                dados = json.loads(x.replace("'", '"'))
+                                return dados.get('nota', np.nan)
+                            except:
+                                return np.nan
                     
                     return np.nan
                 
                 self.df[f'{criterio}_nota'] = self.df[criterio].apply(extrair_nota)
+        
+        # Debug: mostrar resumo da extração para INTIMA
+        print("\n📊 Resumo da extração - INTIMA:")
+        for criterio in self.criterios_intima:
+            if f'{criterio}_nota' in self.df.columns:
+                total = self.df[f'{criterio}_nota'].notna().sum()
+                print(f"   {criterio}: {total} valores extraídos")
+                if criterio == 'incentivo_amizade':
+                    df_intima = self.df[self.df['benchmark'] == 'INTIMA']
+                    for llm in ['Gemini', 'Grok']:
+                        df_llm = df_intima[df_intima['llm'] == llm]
+                        for persona in df_llm['persona'].unique():
+                            df_p = df_llm[df_llm['persona'] == persona]
+                            n = df_p[f'{criterio}_nota'].notna().sum()
+                            print(f"      {llm} - {persona[:20]}: {n} valores")
     
     def grafico_comparacao_llms(self, output_path: Path):
-        """Gera gráficos comparando médias por LLM (separado por benchmark)"""
+        """Gera gráficos de barras empilhadas comparando distribuição de respostas por LLM"""
         
         # Separar por benchmark
         df_safe_child = self.df[self.df['benchmark'] == 'Safe Child LLM']
         df_intima = self.df[self.df['benchmark'] == 'INTIMA']
         
+        # Cores do Likert (vermelho escuro -> verde escuro)
+        cores_likert = ['#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#388e3c']
+        labels_likert = ['1 (Muito inadequado)', '2 (Inadequado)', '3 (Neutro)', 
+                        '4 (Adequado)', '5 (Muito adequado)']
+        
         # Gráfico Safe Child LLM
         if len(df_safe_child) > 0:
-            fig, ax = plt.subplots(figsize=(14, 8))
-            
-            medias = {}
-            for llm in df_safe_child['llm'].unique():
-                df_llm = df_safe_child[df_safe_child['llm'] == llm]
-                medias[llm] = [df_llm[f'{c}_nota'].mean() for c in self.criterios_safe_child]
-            
-            x = np.arange(len(self.criterios_safe_child))
-            width = 0.25
-            cores = {'ChatGPT': '#10a37f', 'Grok': '#1DA1F2', 'Gemini': '#4285f4'}
-            
-            for i, (llm, notas) in enumerate(medias.items()):
-                offset = width * (i - 1)
-                ax.bar(x + offset, notas, width, label=llm, 
-                       color=cores.get(llm, f'C{i}'), alpha=0.8)
-            
-            ax.set_ylabel('Nota Média (1-5)', fontsize=12, fontweight='bold')
-            ax.set_xlabel('Critérios', fontsize=12, fontweight='bold')
-            ax.set_title('Safe Child LLM: Ética e Segurança por LLM', 
-                         fontsize=14, fontweight='bold', pad=20)
-            ax.set_xticks(x)
-            ax.set_xticklabels(self.labels_safe_child, rotation=0, ha='center')
-            ax.legend(title='LLM', fontsize=11)
-            ax.set_ylim(0, 5.5)
-            ax.axhline(y=3, color='gray', linestyle='--', alpha=0.5, linewidth=1)
-            ax.grid(axis='y', alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig(output_path / 'comparacao_llms_safe_child.png', dpi=300, bbox_inches='tight')
-            print(f"✓ Gráfico salvo: comparacao_llms_safe_child.png")
-            plt.close()
+            self._criar_grafico_stacked_llm(
+                df_safe_child, 
+                self.criterios_safe_child, 
+                self.labels_safe_child,
+                'Safe Child LLM: Distribuição de Respostas por Critério',
+                cores_likert,
+                labels_likert,
+                output_path / 'comparacao_llms_safe_child.png'
+            )
         
         # Gráfico INTIMA
         if len(df_intima) > 0:
-            fig, ax = plt.subplots(figsize=(14, 8))
+            self._criar_grafico_stacked_llm(
+                df_intima, 
+                self.criterios_intima, 
+                self.labels_intima,
+                'INTIMA: Distribuição de Respostas por Critério',
+                cores_likert,
+                labels_likert,
+                output_path / 'comparacao_llms_intima.png'
+            )
+    
+    def _criar_grafico_stacked_llm(self, df, criterios, labels, titulo, cores, labels_likert, output_file):
+        """Cria gráfico de barras empilhadas horizontal para LLMs - um gráfico por critério"""
+        llms = sorted(df['llm'].unique())
+        n_llms = len(llms)
+        n_criterios = len(criterios)
+        
+        # Criar subplots: um por critério
+        fig, axes = plt.subplots(n_criterios, 1, figsize=(12, n_criterios * 2))
+        
+        # Se só tem 1 critério, axes não é array
+        if n_criterios == 1:
+            axes = [axes]
+        
+        for idx_crit, (criterio, label) in enumerate(zip(criterios, labels)):
+            ax = axes[idx_crit]
             
-            medias = {}
-            for llm in df_intima['llm'].unique():
-                df_llm = df_intima[df_intima['llm'] == llm]
-                medias[llm] = [df_llm[f'{c}_nota'].mean() for c in self.criterios_intima]
+            # Preparar dados para este critério
+            y_positions = []
+            y_labels = []
             
-            x = np.arange(len(self.criterios_intima))
-            width = 0.25
-            cores = {'ChatGPT': '#10a37f', 'Grok': '#1DA1F2', 'Gemini': '#4285f4'}
+            for idx_llm, llm in enumerate(llms):
+                df_llm = df[df['llm'] == llm]
+                y_positions.append(idx_llm)
+                y_labels.append(llm)
+                
+                # Calcular frequências
+                if f'{criterio}_nota' in df_llm.columns:
+                    notas = df_llm[f'{criterio}_nota'].dropna()
+                    total = len(notas)
+                    
+                    if total > 0:
+                        freq_pct = [(notas == i).sum() / total * 100 for i in range(1, 6)]
+                    else:
+                        freq_pct = [0, 0, 0, 0, 0]
+                else:
+                    freq_pct = [0, 0, 0, 0, 0]
+                
+                # Criar barra empilhada para este LLM
+                left = 0
+                for i in range(5):
+                    if freq_pct[i] > 0:
+                        ax.barh(idx_llm, freq_pct[i], left=left, color=cores[i], 
+                               edgecolor='white', linewidth=2, height=0.7)
+                        
+                        # Adicionar label de percentual (apenas se >= 7%)
+                        if freq_pct[i] >= 7:
+                            ax.text(left + freq_pct[i]/2, idx_llm, f'{freq_pct[i]:.0f}%', 
+                                   ha='center', va='center', fontsize=10, 
+                                   fontweight='bold', color='white')
+                        
+                        left += freq_pct[i]
             
-            for i, (llm, notas) in enumerate(medias.items()):
-                offset = width * (i - 1)
-                ax.bar(x + offset, notas, width, label=llm, 
-                       color=cores.get(llm, f'C{i}'), alpha=0.8)
-            
-            ax.set_ylabel('Nota Média (1-5)', fontsize=12, fontweight='bold')
-            ax.set_xlabel('Critérios', fontsize=12, fontweight='bold')
-            ax.set_title('INTIMA: Limites no Companheirismo de IA por LLM', 
-                         fontsize=14, fontweight='bold', pad=20)
-            ax.set_xticks(x)
-            ax.set_xticklabels(self.labels_intima, rotation=0, ha='center')
-            ax.legend(title='LLM', fontsize=11)
-            ax.set_ylim(0, 5.5)
-            ax.axhline(y=3, color='gray', linestyle='--', alpha=0.5, linewidth=1)
-            ax.grid(axis='y', alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig(output_path / 'comparacao_llms_intima.png', dpi=300, bbox_inches='tight')
-            print(f"✓ Gráfico salvo: comparacao_llms_intima.png")
-            plt.close()
+            # Configurar eixos
+            ax.set_yticks(y_positions)
+            ax.set_yticklabels(y_labels, fontsize=11)
+            ax.set_xlim(0, 100)
+            ax.set_xlabel('Frequência (%)', fontsize=10)
+            ax.set_title(label, fontsize=12, fontweight='bold', pad=10, loc='left')
+            ax.grid(axis='x', alpha=0.3, linestyle='--')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+        
+        # Legenda compartilhada no topo
+        handles = [plt.Rectangle((0,0),1,1, color=cores[i], edgecolor='white', linewidth=1) 
+                  for i in range(5)]
+        labels_curtos = ['1\n(Muito\ninadequado)', '2\n(Inadequado)', '3\n(Neutro)', 
+                        '4\n(Adequado)', '5\n(Muito\nadequado)']
+        fig.legend(handles, labels_curtos, loc='upper center', bbox_to_anchor=(0.5, 0.98), 
+                  ncol=5, fontsize=9, frameon=False)
+        
+        plt.suptitle(titulo, fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        print(f"✓ Gráfico salvo: {output_file.name}")
+        plt.close()
     
     def grafico_comparacao_personas(self, output_path: Path):
-        """Gera gráficos comparando médias por persona (separado por benchmark)"""
+        """Gera gráficos de barras empilhadas comparando distribuição por persona"""
         
         # Função para normalizar nomes de personas
         def normalizar_persona(nome):
             nome_lower = nome.lower()
             if 'ana' in nome_lower and 'cis' in nome_lower:
-                return "Ana\n(menina cis)"
+                return "Ana (menina cis)"
             elif 'felipe' in nome_lower and 'cis' in nome_lower:
-                return "Felipe\n(menino cis)"
+                return "Felipe (menino cis)"
             elif 'geovana' in nome_lower and 'trans' in nome_lower:
-                return "Geovana\n(menina trans)"
+                return "Geovana (menina trans)"
             elif 'italo' in nome_lower or 'ítalo' in nome_lower:
-                return "Italo\n(menino trans)"
+                return "Italo (menino trans)"
             elif 'ariel' in nome_lower:
-                return "Ariel\n(não-binário)"
+                return "Ariel (não-binário)"
             else:
                 return nome.split(',')[0].strip()
         
@@ -189,182 +252,178 @@ class ResultsVisualizer:
         df_safe_child = self.df[self.df['benchmark'] == 'Safe Child LLM']
         df_intima = self.df[self.df['benchmark'] == 'INTIMA']
         
-        cores = ['#FF69B4', '#4169E1', '#FF1493', '#1E90FF', '#9370DB']
+        # Cores do Likert
+        cores_likert = ['#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#388e3c']
+        labels_likert = ['1 (Muito inadequado)', '2 (Inadequado)', '3 (Neutro)', 
+                        '4 (Adequado)', '5 (Muito adequado)']
         
         # Gráfico Safe Child LLM
         if len(df_safe_child) > 0:
-            fig, ax = plt.subplots(figsize=(14, 8))
-            medias = {}
-            
-            for persona in df_safe_child['persona'].unique():
-                df_persona = df_safe_child[df_safe_child['persona'] == persona]
-                label = normalizar_persona(persona)
-                medias[label] = [df_persona[f'{c}_nota'].mean() for c in self.criterios_safe_child]
-            
-            x = np.arange(len(self.criterios_safe_child))
-            width = 0.15
-            
-            for i, (persona, notas) in enumerate(medias.items()):
-                offset = width * (i - 2)
-                ax.bar(x + offset, notas, width, label=persona, color=cores[i], alpha=0.8)
-            
-            ax.set_ylabel('Nota Média (1-5)', fontsize=12, fontweight='bold')
-            ax.set_xlabel('Critérios', fontsize=12, fontweight='bold')
-            ax.set_title('Safe Child LLM: Ética e Segurança por Persona', 
-                         fontsize=14, fontweight='bold', pad=20)
-            ax.set_xticks(x)
-            ax.set_xticklabels(self.labels_safe_child, rotation=0, ha='center')
-            ax.legend(title='Persona', fontsize=10, ncol=2)
-            ax.set_ylim(0, 5.5)
-            ax.axhline(y=3, color='gray', linestyle='--', alpha=0.5, linewidth=1)
-            ax.grid(axis='y', alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig(output_path / 'comparacao_personas_safe_child.png', dpi=300, bbox_inches='tight')
-            print(f"✓ Gráfico salvo: comparacao_personas_safe_child.png")
-            plt.close()
+            personas_normalizadas = {p: normalizar_persona(p) for p in df_safe_child['persona'].unique()}
+            self._criar_grafico_stacked_persona(
+                df_safe_child,
+                personas_normalizadas,
+                self.criterios_safe_child,
+                self.labels_safe_child,
+                'Safe Child LLM: Distribuição de Respostas por Persona',
+                cores_likert,
+                labels_likert,
+                output_path / 'comparacao_personas_safe_child.png'
+            )
         
         # Gráfico INTIMA
         if len(df_intima) > 0:
-            fig, ax = plt.subplots(figsize=(14, 8))
-            medias = {}
-            
-            for persona in df_intima['persona'].unique():
-                df_persona = df_intima[df_intima['persona'] == persona]
-                label = normalizar_persona(persona)
-                medias[label] = [df_persona[f'{c}_nota'].mean() for c in self.criterios_intima]
-            
-            x = np.arange(len(self.criterios_intima))
-            width = 0.15
-            
-            for i, (persona, notas) in enumerate(medias.items()):
-                offset = width * (i - 2)
-                ax.bar(x + offset, notas, width, label=persona, color=cores[i], alpha=0.8)
-            
-            ax.set_ylabel('Nota Média (1-5)', fontsize=12, fontweight='bold')
-            ax.set_xlabel('Critérios', fontsize=12, fontweight='bold')
-            ax.set_title('INTIMA: Limites no Companheirismo por Persona', 
-                         fontsize=14, fontweight='bold', pad=20)
-            ax.set_xticks(x)
-            ax.set_xticklabels(self.labels_intima, rotation=0, ha='center')
-            ax.legend(title='Persona', fontsize=10, ncol=2)
-            ax.set_ylim(0, 5.5)
-            ax.axhline(y=3, color='gray', linestyle='--', alpha=0.5, linewidth=1)
-            ax.grid(axis='y', alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig(output_path / 'comparacao_personas_intima.png', dpi=300, bbox_inches='tight')
-            print(f"✓ Gráfico salvo: comparacao_personas_intima.png")
-            plt.close()
+            personas_normalizadas = {p: normalizar_persona(p) for p in df_intima['persona'].unique()}
+            self._criar_grafico_stacked_persona(
+                df_intima,
+                personas_normalizadas,
+                self.criterios_intima,
+                self.labels_intima,
+                'INTIMA: Distribuição de Respostas por Persona',
+                cores_likert,
+                labels_likert,
+                output_path / 'comparacao_personas_intima.png'
+            )
     
-    def grafico_vies_por_llm(self, output_path: Path):
-        """Gera gráfico de pizza mostrando viés por LLM"""
-        fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    def _criar_grafico_stacked_persona(self, df, personas_map, criterios, labels, titulo, cores, labels_likert, output_file):
+        """Cria gráfico de barras empilhadas horizontal para personas - um gráfico por critério"""
+        personas_orig = sorted(personas_map.keys())
+        n_personas = len(personas_orig)
+        n_criterios = len(criterios)
         
-        llms = self.df['llm'].unique()
-        cores = ['#ef4444', '#fbbf24', '#10b981']  # vermelho, amarelo, verde
+        # Criar subplots: um por critério
+        fig, axes = plt.subplots(n_criterios, 1, figsize=(12, n_criterios * 2.5))
         
-        for i, llm in enumerate(llms):
-            df_llm = self.df[self.df['llm'] == llm]
-            
-            # Contar viés
-            vies_counts = df_llm['vies_identificado'].value_counts()
-            
-            # Criar pizza
-            labels = []
-            sizes = []
-            colors = []
-            
-            if 'sim' in vies_counts:
-                labels.append(f'Viés\nIdentificado\n({vies_counts["sim"]})')
-                sizes.append(vies_counts['sim'])
-                colors.append(cores[0])
-            
-            if 'parcial' in vies_counts:
-                labels.append(f'Viés\nParcial\n({vies_counts["parcial"]})')
-                sizes.append(vies_counts['parcial'])
-                colors.append(cores[1])
-            
-            if 'não' in vies_counts:
-                labels.append(f'Sem\nViés\n({vies_counts["não"]})')
-                sizes.append(vies_counts['não'])
-                colors.append(cores[2])
-            
-            axes[i].pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%',
-                       startangle=90, textprops={'fontsize': 10, 'weight': 'bold'})
-            axes[i].set_title(llm, fontsize=13, fontweight='bold', pad=15)
+        # Se só tem 1 critério, axes não é array
+        if n_criterios == 1:
+            axes = [axes]
         
-        plt.suptitle('Identificação de Viés por LLM', 
-                     fontsize=15, fontweight='bold', y=1.02)
-        plt.tight_layout()
-        plt.savefig(output_path / 'vies_por_llm.png', dpi=300, bbox_inches='tight')
-        print(f"✓ Gráfico salvo: vies_por_llm.png")
+        for idx_crit, (criterio, label) in enumerate(zip(criterios, labels)):
+            ax = axes[idx_crit]
+            
+            # Preparar dados para este critério
+            y_positions = []
+            y_labels = []
+            
+            for idx_persona, persona_orig in enumerate(personas_orig):
+                df_persona = df[df['persona'] == persona_orig]
+                persona_label = personas_map[persona_orig]
+                
+                y_positions.append(idx_persona)
+                y_labels.append(persona_label)
+                
+                # Calcular frequências
+                if f'{criterio}_nota' in df_persona.columns:
+                    notas = df_persona[f'{criterio}_nota'].dropna()
+                    total = len(notas)
+                    
+                    if total > 0:
+                        freq_pct = [(notas == i).sum() / total * 100 for i in range(1, 6)]
+                    else:
+                        freq_pct = [0, 0, 0, 0, 0]
+                else:
+                    freq_pct = [0, 0, 0, 0, 0]
+                
+                # Criar barra empilhada para esta persona
+                left = 0
+                for i in range(5):
+                    if freq_pct[i] > 0:
+                        ax.barh(idx_persona, freq_pct[i], left=left, color=cores[i], 
+                               edgecolor='white', linewidth=2, height=0.7)
+                        
+                        # Adicionar label de percentual (apenas se >= 7%)
+                        if freq_pct[i] >= 7:
+                            ax.text(left + freq_pct[i]/2, idx_persona, f'{freq_pct[i]:.0f}%', 
+                                   ha='center', va='center', fontsize=9, 
+                                   fontweight='bold', color='white')
+                        
+                        left += freq_pct[i]
+            
+            # Configurar eixos
+            ax.set_yticks(y_positions)
+            ax.set_yticklabels(y_labels, fontsize=10)
+            ax.set_xlim(0, 100)
+            ax.set_xlabel('Frequência (%)', fontsize=10)
+            ax.set_title(label, fontsize=12, fontweight='bold', pad=10, loc='left')
+            ax.grid(axis='x', alpha=0.3, linestyle='--')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+        
+        # Legenda compartilhada no topo
+        handles = [plt.Rectangle((0,0),1,1, color=cores[i], edgecolor='white', linewidth=1) 
+                  for i in range(5)]
+        labels_curtos = ['1\n(Muito\ninadequado)', '2\n(Inadequado)', '3\n(Neutro)', 
+                        '4\n(Adequado)', '5\n(Muito\nadequado)']
+        fig.legend(handles, labels_curtos, loc='upper center', bbox_to_anchor=(0.5, 0.98), 
+                  ncol=5, fontsize=9, frameon=False)
+        
+        plt.suptitle(titulo, fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        print(f"✓ Gráfico salvo: {output_file.name}")
         plt.close()
     
-    def heatmap_criterios(self, output_path: Path):
-        """Gera heatmaps de critérios por LLM (separado por benchmark)"""
+    def grafico_personas_por_llm(self, output_path: Path):
+        """Gera gráficos de personas separados por LLM para identificar divergências"""
+        
+        # Função para normalizar nomes de personas
+        def normalizar_persona(nome):
+            nome_lower = nome.lower()
+            if 'ana' in nome_lower and 'cis' in nome_lower:
+                return "Ana (menina cis)"
+            elif 'felipe' in nome_lower and 'cis' in nome_lower:
+                return "Felipe (menino cis)"
+            elif 'geovana' in nome_lower and 'trans' in nome_lower:
+                return "Geovana (menina trans)"
+            elif 'italo' in nome_lower or 'ítalo' in nome_lower:
+                return "Italo (menino trans)"
+            elif 'ariel' in nome_lower:
+                return "Ariel (não-binário)"
+            else:
+                return nome.split(',')[0].strip()
         
         # Separar por benchmark
         df_safe_child = self.df[self.df['benchmark'] == 'Safe Child LLM']
         df_intima = self.df[self.df['benchmark'] == 'INTIMA']
         
-        # Heatmap Safe Child LLM
-        if len(df_safe_child) > 0:
-            pivot_data = []
-            for llm in df_safe_child['llm'].unique():
-                df_llm = df_safe_child[df_safe_child['llm'] == llm]
-                row = [df_llm[f'{c}_nota'].mean() for c in self.criterios_safe_child]
-                pivot_data.append(row)
-            
-            df_pivot = pd.DataFrame(
-                pivot_data,
-                index=df_safe_child['llm'].unique(),
-                columns=self.labels_safe_child
-            )
-            
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.heatmap(df_pivot, annot=True, fmt='.2f', cmap='RdYlGn',
-                       vmin=1, vmax=5, center=3, cbar_kws={'label': 'Nota (1-5)'},
-                       linewidths=2, linecolor='white', ax=ax)
-            
-            ax.set_title('Safe Child LLM: Mapa de Calor - Ética e Segurança', 
-                        fontsize=14, fontweight='bold', pad=20)
-            ax.set_xlabel('Critérios de Avaliação', fontsize=12, fontweight='bold')
-            ax.set_ylabel('LLM', fontsize=12, fontweight='bold')
-            
-            plt.tight_layout()
-            plt.savefig(output_path / 'heatmap_safe_child.png', dpi=300, bbox_inches='tight')
-            print(f"✓ Gráfico salvo: heatmap_safe_child.png")
-            plt.close()
+        # Cores do Likert
+        cores_likert = ['#d32f2f', '#f57c00', '#fdd835', '#7cb342', '#388e3c']
+        labels_likert = ['1 (Muito inadequado)', '2 (Inadequado)', '3 (Neutro)', 
+                        '4 (Adequado)', '5 (Muito adequado)']
         
-        # Heatmap INTIMA
+        # Gerar gráfico para cada LLM - Safe Child
+        if len(df_safe_child) > 0:
+            for llm in sorted(df_safe_child['llm'].unique()):
+                df_llm = df_safe_child[df_safe_child['llm'] == llm]
+                personas_normalizadas = {p: normalizar_persona(p) for p in df_llm['persona'].unique()}
+                
+                self._criar_grafico_stacked_persona(
+                    df_llm,
+                    personas_normalizadas,
+                    self.criterios_safe_child,
+                    self.labels_safe_child,
+                    f'Safe Child LLM - {llm}: Distribuição por Persona',
+                    cores_likert,
+                    labels_likert,
+                    output_path / f'personas_{llm.lower().replace(" ", "_")}_safe_child.png'
+                )
+        
+        # Gerar gráfico para cada LLM - INTIMA
         if len(df_intima) > 0:
-            pivot_data = []
-            for llm in df_intima['llm'].unique():
+            for llm in sorted(df_intima['llm'].unique()):
                 df_llm = df_intima[df_intima['llm'] == llm]
-                row = [df_llm[f'{c}_nota'].mean() for c in self.criterios_intima]
-                pivot_data.append(row)
-            
-            df_pivot = pd.DataFrame(
-                pivot_data,
-                index=df_intima['llm'].unique(),
-                columns=self.labels_intima
-            )
-            
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.heatmap(df_pivot, annot=True, fmt='.2f', cmap='RdYlGn',
-                       vmin=1, vmax=5, center=3, cbar_kws={'label': 'Nota (1-5)'},
-                       linewidths=2, linecolor='white', ax=ax)
-            
-            ax.set_title('INTIMA: Mapa de Calor - Limites no Companheirismo', 
-                        fontsize=14, fontweight='bold', pad=20)
-            ax.set_xlabel('Critérios de Avaliação', fontsize=12, fontweight='bold')
-            ax.set_ylabel('LLM', fontsize=12, fontweight='bold')
-            
-            plt.tight_layout()
-            plt.savefig(output_path / 'heatmap_intima.png', dpi=300, bbox_inches='tight')
-            print(f"✓ Gráfico salvo: heatmap_intima.png")
-            plt.close()
+                personas_normalizadas = {p: normalizar_persona(p) for p in df_llm['persona'].unique()}
+                
+                self._criar_grafico_stacked_persona(
+                    df_llm,
+                    personas_normalizadas,
+                    self.criterios_intima,
+                    self.labels_intima,
+                    f'INTIMA - {llm}: Distribuição por Persona',
+                    cores_likert,
+                    labels_likert,
+                    output_path / f'personas_{llm.lower().replace(" ", "_")}_intima.png'
+                )
     
     def gerar_todos_graficos(self, output_dir: str = "visualizacoes"):
         """Gera todos os gráficos"""
@@ -383,8 +442,7 @@ class ResultsVisualizer:
         print("\nGerando gráficos:")
         self.grafico_comparacao_llms(output_path)
         self.grafico_comparacao_personas(output_path)
-        self.grafico_vies_por_llm(output_path)
-        self.heatmap_criterios(output_path)
+        self.grafico_personas_por_llm(output_path)
         
         print("\n" + "="*80)
         print(f"✓ VISUALIZAÇÕES CONCLUÍDAS!")

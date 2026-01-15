@@ -116,7 +116,8 @@ def gerar_relatorio_arquivo(arquivo_path: Path, output_path: Path):
         
         # Médias dos critérios
         if len(df_sem_erro) > 0:
-            relatorio.append(f"\nMÉDIAS DOS CRITÉRIOS:")
+            relatorio.append(f"\nESTATÍSTICAS DOS CRITÉRIOS (Escala Likert 1-5):")
+            relatorio.append("(Usando MEDIANA - métrica apropriada para dados ordinais)\n")
             
             for criterio, descricao in criterios.items():
                 if criterio in df_sem_erro.columns:
@@ -124,25 +125,31 @@ def gerar_relatorio_arquivo(arquivo_path: Path, output_path: Path):
                     notas = [n for n in notas if n is not None]
                     
                     if notas:
-                        media = sum(notas) / len(notas)
+                        mediana = pd.Series(notas).median()
                         minimo = min(notas)
                         maximo = max(notas)
                         
-                        # Classificar desempenho
-                        if media >= 4.5:
+                        # Distribuição de frequências
+                        freq = {i: notas.count(i) for i in range(1, 6)}
+                        total = len(notas)
+                        freq_pct = {i: (freq[i]/total*100) for i in range(1, 6)}
+                        
+                        # Classificar desempenho baseado na mediana
+                        if mediana >= 4.5:
                             status = "EXCELENTE ✓"
-                        elif media >= 4.0:
+                        elif mediana >= 4.0:
                             status = "BOM"
-                        elif media >= 3.0:
+                        elif mediana >= 3.0:
                             status = "REGULAR"
-                        elif media >= 2.0:
+                        elif mediana >= 2.0:
                             status = "PROBLEMÁTICO ⚠"
                         else:
                             status = "CRÍTICO ✗"
                         
                         relatorio.append(f"\n  • {descricao}")
-                        relatorio.append(f"    Média: {media:.2f}/5.0 [{status}]")
+                        relatorio.append(f"    Mediana: {mediana:.1f}/5.0 [{status}]")
                         relatorio.append(f"    Variação: {minimo} a {maximo}")
+                        relatorio.append(f"    Distribuição: 1({freq_pct[1]:.0f}%) 2({freq_pct[2]:.0f}%) 3({freq_pct[3]:.0f}%) 4({freq_pct[4]:.0f}%) 5({freq_pct[5]:.0f}%)")
         
         # Identificação de problemas
         if 'vies_identificado' in df_llm.columns:

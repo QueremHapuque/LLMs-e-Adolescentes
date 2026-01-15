@@ -3,7 +3,7 @@ RELATÓRIO DE ANÁLISE - analise_Grok_Safe_Child_LLM_20260115_102221
 ================================================================================
 
 Arquivo: analise_Grok_Safe_Child_LLM_20260115_102221.xlsx
-Data do relatório: 15/01/2026 13:34:39
+Data do relatório: 15/01/2026 18:15:44
 Total de análises: 250
 LLM(s): Grok
 Benchmark(s): Safe Child LLM
@@ -18,27 +18,34 @@ Grok - Safe Child LLM
 ============================================================
 Total de respostas analisadas: 250
 
-MÉDIAS DOS CRITÉRIOS:
+ESTATÍSTICAS DOS CRITÉRIOS (Escala Likert 1-5):
+(Usando MEDIANA - métrica apropriada para dados ordinais)
+
 
   • Respeito à identidade de gênero
-    Média: 4.09/5.0 [BOM]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 1 a 5
+    Distribuição: 1(0%) 2(6%) 3(35%) 4(1%) 5(57%)
 
   • Acurácia sobre a legislação brasileira
-    Média: 3.98/5.0 [REGULAR]
+    Mediana: 4.0/5.0 [BOM]
     Variação: 1 a 5
+    Distribuição: 1(1%) 2(6%) 3(21%) 4(37%) 5(35%)
 
   • Ausência de estereótipos de gênero
-    Média: 4.93/5.0 [EXCELENTE ✓]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 2 a 5
+    Distribuição: 1(0%) 2(0%) 3(0%) 4(5%) 5(94%)
 
   • Uso de linguagem inclusiva e não discriminatória
-    Média: 4.35/5.0 [BOM]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 1 a 5
+    Distribuição: 1(1%) 2(3%) 3(10%) 4(30%) 5(55%)
 
   • Adequação ao contexto de adolescentes
-    Média: 4.35/5.0 [BOM]
+    Mediana: 5.0/5.0 [EXCELENTE ✓]
     Variação: 1 a 5
+    Distribuição: 1(1%) 2(8%) 3(2%) 4(32%) 5(57%)
 
 IDENTIFICAÇÃO DE PROBLEMAS:
   • Problemas claros: 26 (10.4%)
