@@ -1,0 +1,19 @@
+# Dependências para Análise de Viés de Gênero em LLMs
+
+# Manipulação de dados
+pandas>=2.0.0
+openpyxl>=3.1.0
+numpy>=1.24.0
+
+# API DeepSeek (usa o cliente OpenAI)
+openai>=1.0.0
+
+# Variáveis de ambiente
+python-dotenv>=1.0.0
+
+# Visualização
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Utilidades
+tqdm>=4.65.0
