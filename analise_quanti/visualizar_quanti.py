@@ -26,7 +26,7 @@ class VisualizadorQuantitativo:
         # Cores por LLM
         self.cores_llm = {
             'ChatGPT': '#10A37F',
-            'Gemini': '#4285F4',
+            'Gemini': '#9370DB',
             'Grok': '#1DA1F2'
         }
     
@@ -56,9 +56,13 @@ class VisualizadorQuantitativo:
         for arquivo in arquivos:
             try:
                 df = pd.read_excel(arquivo)
-                # Converter coluna 'similaridades' de string para lista usando ast.literal_eval
+                # Converter colunas de string para estruturas Python usando ast.literal_eval
                 if 'similaridades' in df.columns:
                     df['similaridades'] = df['similaridades'].apply(
+                        lambda x: ast.literal_eval(x) if isinstance(x, str) else x
+                    )
+                if 'comparacoes_detalhadas' in df.columns:
+                    df['comparacoes_detalhadas'] = df['comparacoes_detalhadas'].apply(
                         lambda x: ast.literal_eval(x) if isinstance(x, str) else x
                     )
                 dfs.append(df)
@@ -74,9 +78,10 @@ class VisualizadorQuantitativo:
         
         return df_consolidado
     
-    def grafico_comparacao_llms(self, df: pd.DataFrame, output_path: Path, benchmark: str):
+    def grafico_intervalo_confianca(self, df: pd.DataFrame, output_path: Path, benchmark: str):
         """
-        Gráfico de barras comparando similaridade média entre LLMs
+        Gráfico de Intervalo de Confiança (95%) comparando LLMs
+        Mostra média com barras de erro do IC95%
         
         Args:
             df: DataFrame com análises
@@ -89,362 +94,589 @@ class VisualizadorQuantitativo:
         if len(df_bench) == 0:
             return
         
-        # Calcular métricas por LLM
-        resultados = []
-        for llm in df_bench['llm'].unique():
+        # Calcular média e IC95% para cada LLM
+        llms_ordem = ['ChatGPT', 'Gemini', 'Grok']
+        medias = []
+        ic_inferiores = []
+        ic_superiores = []
+        llms_presentes = []
+        
+        for llm in llms_ordem:
             df_llm = df_bench[df_bench['llm'] == llm]
-            df_valido = df_llm[df_llm['num_comparacoes'] > 0]
-            
-            if len(df_valido) == 0:
-                continue
-            
-            # Pegar todas as similaridades
-            todas_sims = []
-            for sims in df_valido['similaridades']:
-                if sims:
-                    todas_sims.extend(sims)
-            
-            if todas_sims:
-                # Usar menor similaridade (maior gap) ao invés de média
-                menor_sim = np.min(todas_sims)
-                
-                resultados.append({
-                    'llm': llm,
-                    'menor_similaridade': menor_sim
-                })
-        
-        if not resultados:
-            return
-        
-        df_plot = pd.DataFrame(resultados)
-        
-        # Criar gráfico
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        x = np.arange(len(df_plot))
-        bars = ax.bar(x, df_plot['menor_similaridade'], 
-                      color=[self.cores_llm[llm] for llm in df_plot['llm']],
-                      alpha=0.8, edgecolor='black', linewidth=1.5)
-        
-        # Adicionar valores nas barras
-        for i, (idx, row) in enumerate(df_plot.iterrows()):
-            ax.text(i, row['menor_similaridade'] + 0.02, f"{row['menor_similaridade']:.3f}", 
-                   ha='center', va='bottom', fontweight='bold', fontsize=11)
-        
-        # Linha de referência
-        ax.axhline(y=0.85, color='green', linestyle='--', alpha=0.5, label='Excelente (≥0.85)')
-        ax.axhline(y=0.75, color='orange', linestyle='--', alpha=0.5, label='Bom (≥0.75)')
-        ax.axhline(y=0.65, color='red', linestyle='--', alpha=0.5, label='Moderado (≥0.65)')
-        
-        ax.set_xlabel('LLM', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Menor Similaridade (Maior Gap)', fontsize=12, fontweight='bold')
-        ax.set_title(f'Comparação de Viés de Gênero - {benchmark}\n(Menor similaridade = maior viés entre personas)', 
-                    fontsize=14, fontweight='bold', pad=20)
-        ax.set_xticks(x)
-        ax.set_xticklabels(df_plot['llm'], fontsize=11)
-        ax.set_ylim(0, 1.0)
-        ax.legend(loc='lower right', fontsize=9)
-        ax.grid(axis='y', alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # Salvar
-        arquivo = output_path / f"comparacao_llms_{benchmark.replace(' ', '_')}.png"
-        plt.savefig(arquivo, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"  ✓ {arquivo.name}")
-    
-    def grafico_distribuicao_similaridade(self, df: pd.DataFrame, output_path: Path, benchmark: str):
-        """
-        Gráfico de distribuição (violin plot) das similaridades
-        
-        Args:
-            df: DataFrame com análises
-            output_path: Diretório de saída
-            benchmark: Tipo de benchmark
-        """
-        # Filtrar benchmark
-        df_bench = df[df['benchmark'] == benchmark].copy()
-        
-        if len(df_bench) == 0:
-            return
-        
-        # Preparar dados
-        dados_plot = []
-        for _, row in df_bench.iterrows():
-            if row['similaridades'] and row['num_comparacoes'] > 0:
-                for sim in row['similaridades']:
-                    dados_plot.append({
-                        'llm': row['llm'],
-                        'similaridade': sim
-                    })
-        
-        if not dados_plot:
-            return
-        
-        df_plot = pd.DataFrame(dados_plot)
-        
-        # Criar gráfico
-        fig, ax = plt.subplots(figsize=(12, 7))
-        
-        # Violin plot
-        parts = ax.violinplot(
-            [df_plot[df_plot['llm'] == llm]['similaridade'].values 
-             for llm in sorted(df_plot['llm'].unique())],
-            positions=range(len(df_plot['llm'].unique())),
-            widths=0.7,
-            showmeans=True,
-            showmedians=True
-        )
-        
-        # Colorir violinos
-        for i, llm in enumerate(sorted(df_plot['llm'].unique())):
-            parts['bodies'][i].set_facecolor(self.cores_llm[llm])
-            parts['bodies'][i].set_alpha(0.7)
-        
-        # Box plot sobreposto
-        bp = ax.boxplot(
-            [df_plot[df_plot['llm'] == llm]['similaridade'].values 
-             for llm in sorted(df_plot['llm'].unique())],
-            positions=range(len(df_plot['llm'].unique())),
-            widths=0.3,
-            patch_artist=False,
-            showfliers=False,
-            medianprops=dict(color='red', linewidth=2),
-            boxprops=dict(color='black', linewidth=1.5),
-            whiskerprops=dict(color='black', linewidth=1.5),
-            capprops=dict(color='black', linewidth=1.5)
-        )
-        
-        ax.set_xlabel('LLM', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Similaridade de Cosseno', fontsize=12, fontweight='bold')
-        ax.set_title(f'Distribuição da Similaridade entre Respostas - {benchmark}\n(Violin Plot + Box Plot)', 
-                    fontsize=14, fontweight='bold', pad=20)
-        ax.set_xticks(range(len(df_plot['llm'].unique())))
-        ax.set_xticklabels(sorted(df_plot['llm'].unique()), fontsize=11)
-        ax.set_ylim(-0.05, 1.05)
-        ax.grid(axis='y', alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # Salvar
-        arquivo = output_path / f"distribuicao_similaridade_{benchmark.replace(' ', '_')}.png"
-        plt.savefig(arquivo, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"  ✓ {arquivo.name}")
-    
-    def grafico_perguntas_criticas(self, df: pd.DataFrame, output_path: Path, benchmark: str, top_n: int = 10):
-        """
-        Heatmap das N perguntas com menor similaridade (maior viés)
-        
-        Args:
-            df: DataFrame com análises
-            output_path: Diretório de saída
-            benchmark: Tipo de benchmark
-            top_n: Número de perguntas a mostrar
-        """
-        # Filtrar benchmark
-        df_bench = df[df['benchmark'] == benchmark].copy()
-        
-        if len(df_bench) == 0:
-            return
-        
-        # Pegar as perguntas com menor similaridade média
-        df_valido = df_bench[df_bench['num_comparacoes'] > 0].copy()
-        
-        if len(df_valido) < top_n:
-            top_n = len(df_valido)
-        
-        if top_n == 0:
-            return
-        
-        # Calcular menor similaridade por pergunta
-        df_valido['menor_sim'] = df_valido['similaridades'].apply(lambda x: min(x) if x else 1.0)
-        
-        # Ordenar por menor similaridade (crescente = maior viés)
-        df_sorted = df_valido.sort_values('menor_sim').head(top_n)
-        
-        # Preparar matriz para heatmap
-        matriz_dados = []
-        labels_perguntas = []
-        
-        for idx, row in df_sorted.iterrows():
-            matriz_dados.append([row['menor_sim']])
-            # Truncar pergunta
-            pergunta_curta = row['pergunta'][:60] + "..." if len(row['pergunta']) > 60 else row['pergunta']
-            labels_perguntas.append(f"P{row['numero_pergunta']}: {pergunta_curta}")
-        
-        # Criar gráfico
-        fig, ax = plt.subplots(figsize=(10, max(8, top_n * 0.5)))
-        
-        # Heatmap
-        im = ax.imshow(matriz_dados, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
-        
-        # Adicionar valores
-        for i in range(len(matriz_dados)):
-            text = ax.text(0, i, f"{matriz_dados[i][0]:.3f}",
-                          ha="center", va="center", color="black", fontweight='bold')
-        
-        # Configurar eixos
-        ax.set_xticks([0])
-        ax.set_xticklabels([f'{benchmark}\nMenor Similaridade\n(Maior Gap)'], fontsize=11)
-        ax.set_yticks(range(len(labels_perguntas)))
-        ax.set_yticklabels(labels_perguntas, fontsize=9)
-        ax.set_title(f'Top {top_n} Perguntas com MAIOR Viés de Gênero - {benchmark}\n(Menor similaridade entre personas)', 
-                    fontsize=13, fontweight='bold', pad=20)
-        
-        # Colorbar
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Similaridade', rotation=270, labelpad=20, fontsize=11)
-        
-        plt.tight_layout()
-        
-        # Salvar
-        arquivo = output_path / f"perguntas_criticas_{benchmark.replace(' ', '_')}.png"
-        plt.savefig(arquivo, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"  ✓ {arquivo.name}")
-    
-    def grafico_evolucao_perguntas(self, df: pd.DataFrame, output_path: Path, benchmark: str):
-        """
-        Gráfico de linha mostrando evolução da similaridade ao longo das perguntas
-        
-        Args:
-            df: DataFrame com análises
-            output_path: Diretório de saída
-            benchmark: Tipo de benchmark
-        """
-        # Filtrar benchmark
-        df_bench = df[df['benchmark'] == benchmark].copy()
-        
-        if len(df_bench) == 0:
-            return
-        
-        # Criar gráfico
-        fig, ax = plt.subplots(figsize=(14, 7))
-        
-        for llm in sorted(df_bench['llm'].unique()):
-            df_llm = df_bench[df_bench['llm'] == llm].copy()
-            df_llm = df_llm[df_llm['num_comparacoes'] > 0].sort_values('numero_pergunta')
             
             if len(df_llm) == 0:
                 continue
             
-            # Calcular menor similaridade por pergunta
-            df_llm['menor_sim'] = df_llm['similaridades'].apply(lambda x: min(x) if x else 1.0)
+            # Coletar todas as similaridades
+            todas_sims = []
+            for _, row in df_llm.iterrows():
+                if row['similaridades'] and row['num_comparacoes'] > 0:
+                    todas_sims.extend(row['similaridades'])
             
-            ax.plot(df_llm['numero_pergunta'], df_llm['menor_sim'], 
-                   marker='o', label=llm, color=self.cores_llm[llm],
-                   linewidth=2, markersize=4, alpha=0.7)
+            if len(todas_sims) < 2:
+                continue
+            
+            # Calcular média e IC95%
+            media = np.mean(todas_sims)
+            sem = stats.sem(todas_sims)
+            n = len(todas_sims)
+            confianca = 0.95
+            graus_liberdade = n - 1
+            intervalo = stats.t.interval(confianca, graus_liberdade, loc=media, scale=sem)
+            
+            medias.append(media)
+            ic_inferiores.append(intervalo[0])
+            ic_superiores.append(intervalo[1])
+            llms_presentes.append(llm)
         
-        # Linhas de referência
-        ax.axhline(y=0.85, color='green', linestyle='--', alpha=0.3, label='Excelente')
-        ax.axhline(y=0.75, color='orange', linestyle='--', alpha=0.3, label='Bom')
-        ax.axhline(y=0.65, color='red', linestyle='--', alpha=0.3, label='Moderado')
+        if not medias:
+            return
         
-        ax.set_xlabel('Número da Pergunta', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Menor Similaridade (Maior Gap)', fontsize=12, fontweight='bold')
-        ax.set_title(f'Evolução do Maior Viés ao Longo das Perguntas - {benchmark}', 
+        # Criar gráfico
+        fig, ax = plt.subplots(figsize=(10, 7))
+        
+        positions = range(len(llms_presentes))
+        
+        # Calcular erros para errorbar (distância da média até os limites do IC)
+        erro_inferior = [media - ic_inf for media, ic_inf in zip(medias, ic_inferiores)]
+        erro_superior = [ic_sup - media for media, ic_sup in zip(medias, ic_superiores)]
+        erros = [erro_inferior, erro_superior]
+        
+        # Plot com barras de erro
+        ax.errorbar(
+            positions, 
+            medias, 
+            yerr=erros,
+            fmt='o',  # Pontos circulares
+            markersize=10,
+            capsize=15,  # Tamanho das "tampas" da barra de erro
+            capthick=2,
+            linewidth=2,
+            color='#2E86AB',  # Azul
+            ecolor='#2E86AB',  # Cor da barra de erro
+            markerfacecolor='#2E86AB',
+            markeredgecolor='black',
+            markeredgewidth=1.5
+        )
+        
+        # Adicionar valores com média e intervalo
+        for i, (pos, ic_inf, ic_sup) in enumerate(zip(positions, ic_inferiores, ic_superiores)):
+            offset = 0.005
+            label = f'[{ic_inf:.3f}; {ic_sup:.3f}]'
+            ax.text(pos, ic_sup + offset, label, 
+                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        # Configurar eixos
+        ax.set_xticks(positions)
+        ax.set_xticklabels(llms_presentes, fontsize=12, fontweight='bold')
+        ax.set_xlabel('LLM', fontsize=13, fontweight='bold')
+        ax.set_ylabel('Similaridade de Cosseno (Média)', fontsize=13, fontweight='bold')
+        ax.set_title(f'Gráfico de Intervalos de Confiança (IC 95%)\n{benchmark}', 
                     fontsize=14, fontweight='bold', pad=20)
-        ax.set_ylim(0, 1.0)
-        ax.legend(loc='best', fontsize=10)
-        ax.grid(True, alpha=0.3)
+        
+        # Grid horizontal
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
+        ax.set_axisbelow(True)
+        
+        # Ajustar limites do Y
+        y_min = min(ic_inferiores) - 0.05
+        y_max = max(ic_superiores) + 0.08
+        ax.set_ylim(y_min, y_max)
+        
+        # Adicionar nota explicativa
+        ax.text(0.02, 0.98, 'As barras indicam o intervalo de confiança de 95%', 
+               transform=ax.transAxes, fontsize=9, va='top', style='italic',
+               bbox=dict(boxstyle='round,pad=0.5', facecolor='wheat', alpha=0.3))
         
         plt.tight_layout()
         
         # Salvar
-        arquivo = output_path / f"evolucao_perguntas_{benchmark.replace(' ', '_')}.png"
+        arquivo = output_path / f"intervalo_confianca_{benchmark.replace(' ', '_')}.png"
         plt.savefig(arquivo, dpi=300, bbox_inches='tight')
         plt.close()
         
         print(f"  ✓ {arquivo.name}")
+        
+        # Salvar tabela Excel com dados do IC95%
+        tabela_dados = []
+        for llm, media, ic_inf, ic_sup in zip(llms_presentes, medias, ic_inferiores, ic_superiores):
+            margem_erro = ic_sup - media
+            tabela_dados.append({
+                'LLM': llm,
+                'Média': media,
+                'IC 95% Inferior': ic_inf,
+                'IC 95% Superior': ic_sup,
+                'Margem de Erro': margem_erro,
+                'Amplitude IC': ic_sup - ic_inf
+            })
+        
+        df_tabela = pd.DataFrame(tabela_dados)
+        arquivo_excel = output_path / f"tabela_intervalo_confianca_{benchmark.replace(' ', '_')}.xlsx"
+        df_tabela.to_excel(arquivo_excel, index=False)
+        print(f"  ✓ {arquivo_excel.name} [TABELA]")
     
-    def grafico_resumo_geral(self, df: pd.DataFrame, output_path: Path):
+    def grafico_intervalo_confianca_por_persona(self, df: pd.DataFrame, output_path: Path, benchmark: str):
         """
-        Gráfico resumo comparando todos os benchmarks e LLMs
+        Gráfico de Intervalo de Confiança (95%) por PERSONA comparando os 3 LLMs
+        Similar ao violin plot por persona, mas com IC ao invés de distribuição completa
         
         Args:
             df: DataFrame com análises
             output_path: Diretório de saída
+            benchmark: Tipo de benchmark
         """
-        # Calcular métricas por LLM e benchmark
-        resultados = []
-        for llm in df['llm'].unique():
-            for benchmark in df['benchmark'].unique():
-                df_subset = df[(df['llm'] == llm) & (df['benchmark'] == benchmark)]
-                df_valido = df_subset[df_subset['num_comparacoes'] > 0]
-                
-                if len(df_valido) == 0:
-                    continue
-                
-                todas_sims = []
-                for sims in df_valido['similaridades']:
-                    if sims:
-                        todas_sims.extend(sims)
-                
-                if todas_sims:
-                    # Usar menor similaridade (maior gap)
-                    menor_sim = np.min(todas_sims)
-                    resultados.append({
-                        'llm': llm,
-                        'benchmark': benchmark,
-                        'menor_similaridade': menor_sim
-                    })
+        # Filtrar benchmark
+        df_bench = df[df['benchmark'] == benchmark].copy()
         
-        if not resultados:
+        if len(df_bench) == 0:
             return
         
-        df_plot = pd.DataFrame(resultados)
+        # Verificar se temos comparacoes_detalhadas
+        if 'comparacoes_detalhadas' not in df_bench.columns:
+            print("  ⚠️  Coluna 'comparacoes_detalhadas' não encontrada.")
+            return
         
-        # Criar gráfico de barras agrupadas
-        fig, ax = plt.subplots(figsize=(12, 7))
+        # Mapear nomes para perfis completos
+        perfis_personas = {
+            'Ana': 'Ana\n(garota cis, 15a)',
+            'Felipe': 'Felipe\n(garoto cis, 16a)',
+            'Geovana': 'Geovana\n(garota trans, 14a)',
+            'Italo': 'Ítalo\n(garoto trans, 15a)',
+            'Ariel': 'Ariel\n(não-binário, 16a)'
+        }
         
-        benchmarks = sorted(df_plot['benchmark'].unique())
-        llms = sorted(df_plot['llm'].unique())
-        x = np.arange(len(benchmarks))
-        width = 0.25
+        personas_ordem = ['Ana', 'Felipe', 'Geovana', 'Italo', 'Ariel']
+        llms_ordem = ['ChatGPT', 'Gemini', 'Grok']
         
-        for i, llm in enumerate(llms):
-            df_llm = df_plot[df_plot['llm'] == llm]
-            valores = [df_llm[df_llm['benchmark'] == b]['menor_similaridade'].values[0] 
-                      if len(df_llm[df_llm['benchmark'] == b]) > 0 else 0 
-                      for b in benchmarks]
+        # Coletar similaridades por persona E LLM
+        dados_plot = []
+        
+        for llm in df_bench['llm'].unique():
+            df_llm = df_bench[df_bench['llm'] == llm]
             
-            offset = width * (i - len(llms)/2 + 0.5)
-            bars = ax.bar(x + offset, valores, width, label=llm, 
-                         color=self.cores_llm[llm], alpha=0.8, edgecolor='black')
-            
-            # Adicionar valores
-            for j, v in enumerate(valores):
-                if v > 0:
-                    ax.text(j + offset, v + 0.01, f'{v:.3f}', 
-                           ha='center', va='bottom', fontsize=9, fontweight='bold')
+            for _, row in df_llm.iterrows():
+                if row['comparacoes_detalhadas']:
+                    for comp in row['comparacoes_detalhadas']:
+                        p1 = comp['persona1']
+                        p2 = comp['persona2']
+                        sim = comp['similaridade']
+                        
+                        dados_plot.append({'llm': llm, 'persona': p1, 'similaridade': sim})
+                        dados_plot.append({'llm': llm, 'persona': p2, 'similaridade': sim})
         
-        ax.set_xlabel('Benchmark', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Menor Similaridade (Maior Gap)', fontsize=12, fontweight='bold')
-        ax.set_title('Comparação Geral: Viés de Gênero por LLM e Benchmark\n(Menor similaridade = maior viés entre personas)', 
+        if not dados_plot:
+            print("  ⚠️  Nenhum dado detalhado encontrado.")
+            return
+        
+        df_plot = pd.DataFrame(dados_plot)
+        
+        # Criar gráfico único
+        fig, ax = plt.subplots(figsize=(18, 8))
+        
+        # Preparar dados
+        positions = []
+        medias = []
+        ic_inferiores = []
+        ic_superiores = []
+        colors_list = []
+        labels_x = []
+        
+        pos_counter = 0
+        gap_between_personas = 2.0
+        gap_between_llms = 0.5
+        
+        for persona in personas_ordem:
+            if persona not in df_plot['persona'].unique():
+                continue
+            
+            for llm in llms_ordem:
+                df_subset = df_plot[(df_plot['persona'] == persona) & (df_plot['llm'] == llm)]
+                
+                if len(df_subset) > 1:
+                    valores = df_subset['similaridade'].values
+                    
+                    # Calcular média e IC95%
+                    media = np.mean(valores)
+                    sem = stats.sem(valores)
+                    n = len(valores)
+                    confianca = 0.95
+                    graus_liberdade = n - 1
+                    intervalo = stats.t.interval(confianca, graus_liberdade, loc=media, scale=sem)
+                    
+                    positions.append(pos_counter)
+                    medias.append(media)
+                    ic_inferiores.append(intervalo[0])
+                    ic_superiores.append(intervalo[1])
+                    colors_list.append(self.cores_llm[llm])
+                    
+                    pos_counter += gap_between_llms
+            
+            pos_counter += gap_between_personas
+        
+        # Calcular erros
+        erro_inferior = [media - ic_inf for media, ic_inf in zip(medias, ic_inferiores)]
+        erro_superior = [ic_sup - media for media, ic_sup in zip(medias, ic_superiores)]
+        erros = [erro_inferior, erro_superior]
+        
+        # Plot com barras de erro (um por um para colorir individualmente)
+        for i, (pos, media, erro_inf, erro_sup, color) in enumerate(zip(positions, medias, erro_inferior, erro_superior, colors_list)):
+            ax.errorbar(
+                pos, 
+                media, 
+                yerr=[[erro_inf], [erro_sup]],
+                fmt='o',
+                markersize=8,
+                capsize=10,
+                capthick=2,
+                linewidth=2,
+                color=color,
+                ecolor=color,
+                markerfacecolor=color,
+                markeredgecolor='black',
+                markeredgewidth=1.2
+            )
+        
+        # Adicionar valores com média e intervalo
+        for pos, ic_inf, ic_sup in zip(positions, ic_inferiores, ic_superiores):
+            offset = 0.005
+            label = f'[{ic_inf:.2f}; {ic_sup:.2f}]'
+            ax.text(pos, ic_sup + offset, label, 
+                   ha='center', va='bottom', fontsize=7, fontweight='bold')
+        
+        # Configurar eixo X com personas
+        persona_positions = []
+        persona_labels = []
+        
+        pos_counter = 0
+        for persona in personas_ordem:
+            if persona not in df_plot['persona'].unique():
+                continue
+            
+            # Posição central dos 3 LLMs
+            centro = pos_counter + gap_between_llms
+            persona_positions.append(centro)
+            persona_labels.append(perfis_personas[persona])
+            
+            pos_counter += (gap_between_llms * len(llms_ordem)) + gap_between_personas
+        
+        ax.set_xticks(persona_positions)
+        ax.set_xticklabels(persona_labels, fontsize=10, fontweight='bold')
+        
+        # Labels e título
+        ax.set_xlabel('Persona', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Similaridade de Cosseno (Média)', fontsize=12, fontweight='bold')
+        ax.set_title(f'{benchmark}: Intervalos de Confiança (IC 95%) por Persona\n(Cada persona mostra ChatGPT | Gemini | Grok lado a lado)', 
                     fontsize=14, fontweight='bold', pad=20)
-        ax.set_xticks(x)
-        ax.set_xticklabels(benchmarks, fontsize=11)
-        ax.set_ylim(0, 1.0)
-        ax.legend(loc='lower right', fontsize=10)
-        ax.grid(axis='y', alpha=0.3)
+        
+        # Ajustar limites
+        if ic_inferiores and ic_superiores:
+            y_min = min(ic_inferiores) - 0.05
+            y_max = max(ic_superiores) + 0.08
+            ax.set_ylim(y_min, y_max)
+        
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
+        ax.set_axisbelow(True)
+        
+        # Legenda
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=self.cores_llm['ChatGPT'], edgecolor='black', label='ChatGPT'),
+            Patch(facecolor=self.cores_llm['Gemini'], edgecolor='black', label='Gemini'),
+            Patch(facecolor=self.cores_llm['Grok'], edgecolor='black', label='Grok')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=11, framealpha=0.9)
         
         plt.tight_layout()
         
         # Salvar
-        arquivo = output_path / "resumo_geral_similaridade.png"
+        arquivo = output_path / f"intervalo_confianca_por_persona_{benchmark.replace(' ', '_')}.png"
         plt.savefig(arquivo, dpi=300, bbox_inches='tight')
         plt.close()
         
         print(f"  ✓ {arquivo.name}")
     
+    def grafico_violino_por_persona(self, df: pd.DataFrame, output_path: Path, benchmark: str):
+        """
+        Violin plot agrupado por PERSONA comparando os 3 LLMs lado a lado
+        Objetivo: ver como cada LLM trata cada persona diferentemente
+        
+        Args:
+            df: DataFrame com análises
+            output_path: Diretório de saída  
+            benchmark: Tipo de benchmark
+        """
+        # Filtrar benchmark
+        df_bench = df[df['benchmark'] == benchmark].copy()
+        
+        if len(df_bench) == 0:
+            return
+        
+        # Verificar se temos comparacoes_detalhadas
+        if 'comparacoes_detalhadas' not in df_bench.columns:
+            print("  ⚠️  Coluna 'comparacoes_detalhadas' não encontrada. Execute a análise quantitativa novamente.")
+            return
+        
+        # Mapear nomes para perfis completos
+        perfis_personas = {
+            'Ana': 'Ana\n(garota cis, 15a)',
+            'Felipe': 'Felipe\n(garoto cis, 16a)',
+            'Geovana': 'Geovana\n(garota trans, 14a)',
+            'Italo': 'Ítalo\n(garoto trans, 15a)',
+            'Ariel': 'Ariel\n(não-binário, 16a)'
+        }
+        
+        personas_ordem = ['Ana', 'Felipe', 'Geovana', 'Italo', 'Ariel']
+        llms_ordem = ['ChatGPT', 'Gemini', 'Grok']
+        
+        # Coletar similaridades por persona E LLM
+        dados_plot = []
+        
+        for llm in df_bench['llm'].unique():
+            df_llm = df_bench[df_bench['llm'] == llm]
+            
+            for _, row in df_llm.iterrows():
+                if row['comparacoes_detalhadas']:
+                    for comp in row['comparacoes_detalhadas']:
+                        p1 = comp['persona1']
+                        p2 = comp['persona2']
+                        sim = comp['similaridade']
+                        
+                        # Adicionar para ambas personas
+                        dados_plot.append({'llm': llm, 'persona': p1, 'similaridade': sim})
+                        dados_plot.append({'llm': llm, 'persona': p2, 'similaridade': sim})
+        
+        if not dados_plot:
+            print("  ⚠️  Nenhum dado detalhado encontrado.")
+            return
+        
+        df_plot = pd.DataFrame(dados_plot)
+        
+        # Criar gráfico único com todas as personas e LLMs
+        fig, ax = plt.subplots(figsize=(18, 8))
+        
+        # Preparar dados para violin plot agrupado
+        positions = []
+        data_to_plot = []
+        colors_list = []
+        
+        pos_counter = 0
+        gap_between_personas = 2.0
+        gap_between_llms = 0.5
+        
+        for persona in personas_ordem:
+            if persona not in df_plot['persona'].unique():
+                continue
+                
+            for llm in llms_ordem:
+                df_subset = df_plot[(df_plot['persona'] == persona) & (df_plot['llm'] == llm)]
+                
+                if len(df_subset) > 0:
+                    data_to_plot.append(df_subset['similaridade'].values)
+                    positions.append(pos_counter)
+                    colors_list.append(self.cores_llm[llm])
+                    
+                    pos_counter += gap_between_llms
+            
+            # Adicionar gap maior entre personas
+            pos_counter += gap_between_personas
+        
+        # Criar violin plots individuais para cada grupo
+        for i, (data, pos, color) in enumerate(zip(data_to_plot, positions, colors_list)):
+            parts = ax.violinplot(
+                [data],
+                positions=[pos],
+                widths=0.4,
+                showmeans=False,
+                showmedians=False,
+                showextrema=False
+            )
+            
+            # Colorir violino
+            for pc in parts['bodies']:
+                pc.set_facecolor(color)
+                pc.set_alpha(0.4)
+                pc.set_edgecolor('black')
+                pc.set_linewidth(1.2)
+        
+        # Adicionar boxplot fino sobreposto para mostrar quartis
+        bp = ax.boxplot(
+            data_to_plot,
+            positions=positions,
+            widths=0.15,
+            patch_artist=False,
+            showfliers=False,
+            medianprops=dict(color='red', linewidth=2),
+            boxprops=dict(color='black', linewidth=1.2),
+            whiskerprops=dict(color='black', linewidth=1.2),
+            capprops=dict(color='black', linewidth=1.2)
+        )
+        
+        # Adicionar valores mínimos (pior caso)
+        pos_idx = 0
+        for persona in personas_ordem:
+            if persona not in df_plot['persona'].unique():
+                continue
+                
+            for llm in llms_ordem:
+                df_subset = df_plot[(df_plot['persona'] == persona) & (df_plot['llm'] == llm)]
+                
+                if len(df_subset) > 0:
+                    valores = df_subset['similaridade'].values
+                    minimo = np.min(valores)
+                    
+                    # Pior caso - ajuste de posição dinâmico
+                    offset = 0.02  # Mais próximo do violino
+                    ax.text(positions[pos_idx], minimo - offset, f'{minimo:.2f}', 
+                           ha='center', va='top', fontsize=8, fontweight='bold',
+                           bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.8,
+                                   edgecolor='orange', linewidth=1))
+                    
+                    pos_idx += 1
+        
+        # Configurar eixo X com personas
+        persona_positions = []
+        persona_labels = []
+        
+        pos_counter = 0
+        for persona in personas_ordem:
+            if persona not in df_plot['persona'].unique():
+                continue
+            
+            # Posição central dos 3 LLMs
+            centro = pos_counter + gap_between_llms
+            persona_positions.append(centro)
+            persona_labels.append(perfis_personas[persona])
+            
+            pos_counter += (gap_between_llms * len(llms_ordem)) + gap_between_personas
+        
+        ax.set_xticks(persona_positions)
+        ax.set_xticklabels(persona_labels, fontsize=10, fontweight='bold')
+        
+        # Labels e título
+        ax.set_xlabel('Persona', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Similaridade de Cosseno\n(comparações envolvendo esta persona)', 
+                     fontsize=12, fontweight='bold')
+        ax.set_title(f'{benchmark}: Comparação de Viés por Persona entre LLMs\n' +
+                    f'(Cada persona mostra ChatGPT | Gemini | Grok lado a lado)', 
+                    fontsize=14, fontweight='bold', pad=20)
+        
+        ax.set_ylim(-0.05, 1.05)
+        ax.grid(axis='y', alpha=0.3)
+        
+        # Legenda
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=self.cores_llm['ChatGPT'], alpha=0.7, label='ChatGPT'),
+            Patch(facecolor=self.cores_llm['Gemini'], alpha=0.7, label='Gemini'),
+            Patch(facecolor=self.cores_llm['Grok'], alpha=0.7, label='Grok')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=11, framealpha=0.9)
+        
+        plt.tight_layout()
+        
+        # Salvar
+        arquivo = output_path / f"comparacao_llms_por_persona_{benchmark.replace(' ', '_')}.png"
+        plt.savefig(arquivo, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ {arquivo.name}")
+    
+    def grafico_heatmap_persona_llm(self, df: pd.DataFrame, output_path: Path, benchmark: str):
+        """
+        Heatmap mostrando PIOR CASO de viés por Persona x LLM
+        (Métrica adicional interessante: identifica qual LLM tem mais viés contra qual persona)
+        
+        Args:
+            df: DataFrame com análises
+            output_path: Diretório de saída
+            benchmark: Tipo de benchmark
+        """
+        # Filtrar benchmark
+        df_bench = df[df['benchmark'] == benchmark].copy()
+        
+        if len(df_bench) == 0:
+            return
+        
+        # Calcular pior caso por LLM
+        llms = sorted(df_bench['llm'].unique())
+        
+        # Criar matriz: LLMs x Estatísticas
+        matriz_dados = []
+        estatisticas = ['Pior Caso\n(min)', 'Q1\n(25%)', 'Mediana\n(50%)', 'Q3\n(75%)', 'Melhor\n(max)']
+        
+        for llm in llms:
+            df_llm = df_bench[df_bench['llm'] == llm]
+            todas_sims = []
+            for sims in df_llm['similaridades']:
+                if sims:
+                    todas_sims.extend(sims)
+            
+            if todas_sims:
+                linha = [
+                    np.min(todas_sims),      # Pior caso
+                    np.percentile(todas_sims, 25),  # Q1
+                    np.median(todas_sims),   # Mediana
+                    np.percentile(todas_sims, 75),  # Q3
+                    np.max(todas_sims)       # Melhor caso
+                ]
+                matriz_dados.append(linha)
+        
+        if not matriz_dados:
+            return
+        
+        # Criar gráfico
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Heatmap
+        im = ax.imshow(matriz_dados, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
+        
+        # Adicionar valores e destacar pior caso
+        for i in range(len(llms)):
+            for j in range(len(estatisticas)):
+                valor = matriz_dados[i][j]
+                # Destacar pior caso (primeira coluna)
+                if j == 0:
+                    text = ax.text(j, i, f'{valor:.3f}',
+                                  ha="center", va="center", color="white",
+                                  fontweight='bold', fontsize=12,
+                                  bbox=dict(boxstyle='round,pad=0.5', 
+                                           facecolor='darkred', alpha=0.8))
+                else:
+                    text = ax.text(j, i, f'{valor:.3f}',
+                                  ha="center", va="center", color="black",
+                                  fontweight='bold', fontsize=10)
+        
+        # Configurar eixos
+        ax.set_xticks(range(len(estatisticas)))
+        ax.set_xticklabels(estatisticas, fontsize=11)
+        ax.set_yticks(range(len(llms)))
+        ax.set_yticklabels(llms, fontsize=12, fontweight='bold')
+        ax.set_title(f'Análise Estatística de Viés - {benchmark}\n(Destaque: PIOR CASO = maior viés detectado)', 
+                    fontsize=14, fontweight='bold', pad=20)
+        
+        # Colorbar
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Similaridade\n(0=viés máximo, 1=sem viés)', 
+                      rotation=270, labelpad=25, fontsize=11)
+        
+        plt.tight_layout()
+        
+        # Salvar
+        arquivo = output_path / f"heatmap_estatisticas_{benchmark.replace(' ', '_')}.png"
+        plt.savefig(arquivo, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ {arquivo.name} [NOVA MÉTRICA: Estatísticas por LLM com destaque no pior caso]")
+    
+
+    
+
+    
+
+    
     def gerar_todos_graficos(self, df: pd.DataFrame, output_path: Path):
         """
-        Gera todos os gráficos
+        Gera todos os gráficos (apenas violinos conforme orientação)
         
         Args:
             df: DataFrame consolidado
@@ -455,27 +687,32 @@ class VisualizadorQuantitativo:
             return
         
         print("\n" + "="*80)
-        print("GERANDO VISUALIZAÇÕES")
+        print("GERANDO VISUALIZAÇÕES (FOCO: PIOR CASO)")
         print("="*80)
         
         # Criar diretório de saída
         output_path.mkdir(exist_ok=True)
         
-        # Gráfico resumo geral
-        print("\nGráfico Resumo Geral:")
-        self.grafico_resumo_geral(df, output_path)
-        
         # Gráficos por benchmark
         for benchmark in df['benchmark'].unique():
-            print(f"\nGráficos para {benchmark}:")
-            self.grafico_comparacao_llms(df, output_path, benchmark)
-            self.grafico_distribuicao_similaridade(df, output_path, benchmark)
-            self.grafico_perguntas_criticas(df, output_path, benchmark)
-            self.grafico_evolucao_perguntas(df, output_path, benchmark)
+            print(f"\n📊 Gráficos para {benchmark}:")
+            print("-" * 60)
+            self.grafico_intervalo_confianca(df, output_path, benchmark)
+            self.grafico_intervalo_confianca_por_persona(df, output_path, benchmark)
+            self.grafico_violino_por_persona(df, output_path, benchmark)
         
         print("\n" + "="*80)
-        print("✓ TODAS AS VISUALIZAÇÕES FORAM GERADAS!")
+        print("✓ VISUALIZAÇÕES CONCLUÍDAS!")
         print("="*80)
+        print("\n📈 Gráficos gerados:")
+        print("  • Intervalo de Confiança (IC 95%) GERAL: média com barras de erro por LLM")
+        print("  • Intervalo de Confiança (IC 95%) POR PERSONA: comparação entre LLMs para cada persona")
+        print("  • Violin plot por PERSONA: distribuição completa para cada persona")
+        print("\n💡 Interpretação:")
+        print("  • Valores BAIXOS = MAIOR viés de gênero")
+        print("  • IC 95%: se os intervalos NÃO se sobrepõem, há diferença estatística")
+        print("  • Gráfico por persona: identifica QUAL persona sofre mais viés")
+        print("  • Min destacado no violin = PIOR CASO (maior viés detectado)")
 
 
 def main():

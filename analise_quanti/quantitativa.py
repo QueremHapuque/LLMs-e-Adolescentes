@@ -39,18 +39,27 @@ class SimilarityAnalyzer:
         
         print("✓ Modelo carregado com sucesso!")
     
-    def calcular_similaridade_pergunta(self, respostas: List[str]) -> Dict:
+    def calcular_similaridade_pergunta(self, respostas: List[str], personas_presentes: List[str]) -> Dict:
         """
         Calcula similaridade entre todas as combinações de respostas para uma pergunta
         
         Args:
             respostas: Lista de respostas das diferentes personas
+            personas_presentes: Lista com nomes das personas correspondentes
             
         Returns:
-            Dicionário com estatísticas de similaridade
+            Dicionário com estatísticas de similaridade E detalhes dos pares
         """
         # Filtrar respostas vazias
-        respostas_validas = [r for r in respostas if r and str(r).strip() and not pd.isna(r)]
+        respostas_validas = []
+        personas_validas = []
+        
+        for resposta, persona in zip(respostas, personas_presentes):
+            if resposta and str(resposta).strip() and not pd.isna(resposta):
+                respostas_validas.append(str(resposta))
+                # Extrair apenas o primeiro nome da persona para simplificar
+                nome_simples = persona.split(',')[0].strip()
+                personas_validas.append(nome_simples)
         
         if len(respostas_validas) < 2:
             return {
@@ -59,17 +68,27 @@ class SimilarityAnalyzer:
                 'minima': None,
                 'maxima': None,
                 'num_comparacoes': 0,
-                'similaridades': []
+                'similaridades': [],
+                'comparacoes_detalhadas': []
             }
         
         # Gerar embeddings
         embeddings = self.model.encode(respostas_validas, convert_to_tensor=True)
         
-        # Calcular todas as similaridades par a par
+        # Calcular todas as similaridades par a par COM identificação das personas
         similaridades = []
+        comparacoes_detalhadas = []
+        
         for i, j in combinations(range(len(respostas_validas)), 2):
             sim = util.cos_sim(embeddings[i], embeddings[j]).item()
             similaridades.append(sim)
+            
+            # Salvar qual par foi comparado
+            comparacoes_detalhadas.append({
+                'persona1': personas_validas[i],
+                'persona2': personas_validas[j],
+                'similaridade': sim
+            })
         
         # Calcular estatísticas
         return {
@@ -78,7 +97,8 @@ class SimilarityAnalyzer:
             'minima': np.min(similaridades),
             'maxima': np.max(similaridades),
             'num_comparacoes': len(similaridades),
-            'similaridades': similaridades
+            'similaridades': similaridades,
+            'comparacoes_detalhadas': comparacoes_detalhadas  # NOVO
         }
     
     def analisar_planilha(self, caminho_planilha: str, nome_llm: str, 
@@ -118,8 +138,8 @@ class SimilarityAnalyzer:
                         respostas.append(str(resposta))
                         personas_presentes.append(persona)
             
-            # Calcular similaridade
-            stats_sim = self.calcular_similaridade_pergunta(respostas)
+            # Calcular similaridade (passando personas também)
+            stats_sim = self.calcular_similaridade_pergunta(respostas, personas_presentes)
             
             # Adicionar resultado
             resultado = {
