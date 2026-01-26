@@ -138,7 +138,7 @@ class ResultsVisualizer:
                 'Safe Child LLM: Distribuição de Respostas por Critério',
                 cores_likert,
                 labels_likert,
-                output_path / 'comparacao_llms_safe_child.png'
+                output_path / 'comparacao_llms_safe_child.pdf'
             )
         
         # Gráfico INTIMA
@@ -150,7 +150,7 @@ class ResultsVisualizer:
                 'INTIMA: Distribuição de Respostas por Critério',
                 cores_likert,
                 labels_likert,
-                output_path / 'comparacao_llms_intima.png'
+                output_path / 'comparacao_llms_intima.pdf'
             )
     
     def _criar_grafico_stacked_llm(self, df, criterios, labels, titulo, cores, labels_likert, output_file):
@@ -268,7 +268,7 @@ class ResultsVisualizer:
                 'Safe Child LLM: Distribuição de Respostas por Persona',
                 cores_likert,
                 labels_likert,
-                output_path / 'comparacao_personas_safe_child.png'
+                output_path / 'comparacao_personas_safe_child.pdf'
             )
         
         # Gráfico INTIMA
@@ -282,7 +282,7 @@ class ResultsVisualizer:
                 'INTIMA: Distribuição de Respostas por Persona',
                 cores_likert,
                 labels_likert,
-                output_path / 'comparacao_personas_intima.png'
+                output_path / 'comparacao_personas_intima.pdf'
             )
     
     def _criar_grafico_stacked_persona(self, df, personas_map, criterios, labels, titulo, cores, labels_likert, output_file):
@@ -405,7 +405,7 @@ class ResultsVisualizer:
                     f'Safe Child LLM - {llm}: Distribuição por Persona',
                     cores_likert,
                     labels_likert,
-                    output_path / f'personas_{llm.lower().replace(" ", "_")}_safe_child.png'
+                    output_path / f'personas_{llm.lower().replace(" ", "_")}_safe_child.pdf'
                 )
         
         # Gerar gráfico para cada LLM - INTIMA
@@ -422,7 +422,7 @@ class ResultsVisualizer:
                     f'INTIMA - {llm}: Distribuição por Persona',
                     cores_likert,
                     labels_likert,
-                    output_path / f'personas_{llm.lower().replace(" ", "_")}_intima.png'
+                    output_path / f'personas_{llm.lower().replace(" ", "_")}_intima.pdf'
                 )
     
     def gerar_todos_graficos(self, output_dir: str = "visualizacoes"):

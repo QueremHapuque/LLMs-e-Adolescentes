@@ -191,7 +191,7 @@ class VisualizadorQuantitativo:
         plt.tight_layout()
         
         # Salvar
-        arquivo = output_path / f"intervalo_confianca_{benchmark.replace(' ', '_')}.png"
+        arquivo = output_path / f"intervalo_confianca_{benchmark.replace(' ', '_')}.pdf"
         plt.savefig(arquivo, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -389,7 +389,7 @@ class VisualizadorQuantitativo:
         plt.tight_layout()
         
         # Salvar
-        arquivo = output_path / f"intervalo_confianca_por_persona_{benchmark.replace(' ', '_')}.png"
+        arquivo = output_path / f"intervalo_confianca_por_persona_{benchmark.replace(' ', '_')}.pdf"
         plt.savefig(arquivo, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -575,7 +575,7 @@ class VisualizadorQuantitativo:
         plt.tight_layout()
         
         # Salvar
-        arquivo = output_path / f"comparacao_llms_por_persona_{benchmark.replace(' ', '_')}.png"
+        arquivo = output_path / f"comparacao_llms_por_persona_{benchmark.replace(' ', '_')}.pdf"
         plt.savefig(arquivo, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -662,7 +662,7 @@ class VisualizadorQuantitativo:
         plt.tight_layout()
         
         # Salvar
-        arquivo = output_path / f"heatmap_estatisticas_{benchmark.replace(' ', '_')}.png"
+        arquivo = output_path / f"heatmap_estatisticas_{benchmark.replace(' ', '_')}.pdf"
         plt.savefig(arquivo, dpi=300, bbox_inches='tight')
         plt.close()
         
